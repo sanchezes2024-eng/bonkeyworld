@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bonkeyworld</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        #login { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        #chat-ui { display: none; width: 100vw; height: 100vh; position: relative; background: #f0f0f0; }
+        #world { width: 100%; height: 80vh; position: relative; border-bottom: 2px solid #ccc; overflow: hidden; }
+        .placeholder { width: 40px; height: 40px; background: #3498db; position: absolute; cursor: grab; border-radius: 5px; display: flex; justify-content: center; align-items: center; color: white; font-size: 10px; user-select: none; }
+        #bottom-bar { position: absolute; bottom: 0; width: 100%; height: 20vh; display: flex; padding: 10px; box-sizing: border-box; background: white; }
+        #messages { width: 70%; height: 100%; overflow-y: scroll; border: 1px solid #ddd; margin-right: 10px; }
+        #controls { width: 30%; display: flex; flex-direction: column; }
+    </style>
+</head>
+<body>
+    <div id="login">
+        <h2>Welcome to Bonkeyworld</h2>
+        <input id="nickname" placeholder="Nickname" /><br>
+        <input id="room" placeholder="Room ID" /><br>
+        <button onclick="joinRoom()">Join</button>
+    </div>
+
+    <div id="chat-ui">
+        <div id="world"></div>
+        <div id="bottom-bar">
+            <div id="messages"></div>
+            <div id="controls">
+                <input id="msgInput" placeholder="Type message..." />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let currentRoom = "";
+        let nickname = "";
+
+        function joinRoom() {
+            nickname = document.getElementById('nickname').value;
+            currentRoom = document.getElementById('room').value;
+            if(nickname && currentRoom) {
+                document.getElementById('login').style.display = 'none';
+                document.getElementById('chat-ui').style.display = 'block';
+                socket.emit('join', { nickname, room: currentRoom });
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('msgInput');
+            socket.emit('chatMessage', { room: currentRoom, name: nickname, msg: input.value });
+            input.value = '';
+        }
+
+        // --- Movement and Rendering Logic ---
+        const world = document.getElementById('world');
+
+        socket.on('updateUsers', (users) => {
+            world.innerHTML = ''; // Clear world
+            for (let id in users) {
+                const user = users[id];
+                if (user.room === currentRoom) {
+                    const el = document.createElement('div');
+                    el.className = 'placeholder';
+                    el.style.left = user.x + 'px';
+                    el.style.top = user.y + 'px';
+                    el.innerText = user.nickname;
+                    
+                    // Only make local user draggable
+                    if (id === socket.id) {
+                        el.style.background = '#e74c3c'; // Distinct color
+                        el.onmousedown = startDrag;
+                    }
+                    world.appendChild(el);
+                }
+            }
+        });
+
+        socket.on('message', (data) => {
+            const msgBox = document.getElementById('messages');
+            msgBox.innerHTML += `<div><b>${data.name}:</b> ${data.msg}</div>`;
+        });
+
+        function startDrag(e) {
+            const el = e.target;
+            function mouseMove(e) {
+                let x = e.clientX - world.offsetLeft - 20;
+                let y = e.clientY - world.offsetTop - 20;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                socket.emit('move', { x, y });
+            }
+            document.addEventListener('mousemove', mouseMove);
+            document.onmouseup = () => document.removeEventListener('mousemove', mouseMove);
+        }
+    </script>
+</body>
+</html>
